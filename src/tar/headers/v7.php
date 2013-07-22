@@ -193,15 +193,16 @@ class ezcArchiveV7Header
 
         if ( !is_null( $file ) )
         {
-            $this->properties = unpack ( "a100fileName/".
-                                         "a8fileMode/".
-                                         "a8userId/".
-                                         "a8groupId/".
-                                         "a12fileSize/".
-                                         "a12modificationTime/".
-                                         "a8checksum/".
-                                         "a1type/".
-                                         "a100linkName", $file->current() );
+            $formatCode = version_compare( PHP_VERSION, '5.5.0', '<' ) ? 'a' : 'Z';
+            $this->properties = unpack( "{$formatCode}100fileName/".
+                                        "{$formatCode}8fileMode/".
+                                        "{$formatCode}8userId/".
+                                        "{$formatCode}8groupId/".
+                                        "{$formatCode}12fileSize/".
+                                        "{$formatCode}12modificationTime/".
+                                        "{$formatCode}8checksum/".
+                                        "{$formatCode}1type/".
+                                        "{$formatCode}100linkName", $file->current() );
 
             $this->properties["userId"]   = octdec( $this->properties["userId"] );
             $this->properties["groupId"]  = octdec( $this->properties["groupId"] );
