@@ -163,7 +163,8 @@ class ezcArchiveUstarHeader extends ezcArchiveV7Header
             parent::__construct( $file );
 
             // Decode the rest.
-            $decoded = unpack( "@257/a6magic/a2version/a32userName/a32groupName/a8deviceMajorNumber/a8deviceMinorNumber/a155filePrefix", $file->current() );
+            $formatCode = version_compare( PHP_VERSION, '5.5.0', '<' ) ? 'a' : 'Z';
+            $decoded = unpack( "@257/{$formatCode}6magic/{$formatCode}2version/{$formatCode}32userName/{$formatCode}32groupName/{$formatCode}8deviceMajorNumber/{$formatCode}8deviceMinorNumber/{$formatCode}155filePrefix", $file->current() );
 
             // Append the decoded array to the header.
             $this->properties = array_merge( $this->properties, $decoded );
