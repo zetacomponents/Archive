@@ -41,6 +41,7 @@
             "src"
         ]
     },
+	"minimum-stability": "dev",
     "require": {
         "zetacomponents/base": "*"
     },
