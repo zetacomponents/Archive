@@ -1,3 +1,13 @@
+1.5 - Friday 12 September 2014
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- Fixed: Updated copyright dates in NOTICE files.
+- Remove custom test runner.
+- Enabled 2 test cases (11 tests) in Archive component
+- Added composer.json
+- Added Travis config
+- Fixed wrongly decoded TAR archive headers with PHP 5.5
+
 1.4.2 - [RELEASEDATE]
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
