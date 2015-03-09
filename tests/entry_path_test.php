@@ -4,7 +4,6 @@
  *
  * @author Andreas Demetriou <androsland@gmail.com>
  */
- 
 class EntryPathTest extends ezcArchiveTestCase {
 
 	/**
@@ -30,3 +29,4 @@ class EntryPathTest extends ezcArchiveTestCase {
 		$this->removeTempDir();
 	}
 }
+?>
