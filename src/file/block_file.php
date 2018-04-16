@@ -363,7 +363,6 @@ class ezcArchiveBlockFile extends ezcArchiveFile
         // Switch write mode, if needed.
         $this->switchWriteMode();
 
-        $dataLength = sizeof( $data );
         $length = $this->writeBytes( $data );
 
         if ( ( $mod = ( $length % $this->blockSize ) ) > 0 )
