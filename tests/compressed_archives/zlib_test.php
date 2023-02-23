@@ -35,13 +35,13 @@ require_once(dirname(__FILE__) . "/../archive_test_case.php");
  */
 class ezcArchiveZlibTest extends ezcArchiveTestCase
 {
-    protected function setUp()
+    protected function setUp() : void
     {
         $this->createTempDir( "ezcArchive_" );
         date_default_timezone_set( "UTC" ); 
     }
 
-    protected function tearDown()
+    protected function tearDown() : void
     {
         $this->removeTempDir();
     }
@@ -190,7 +190,7 @@ class ezcArchiveZlibTest extends ezcArchiveTestCase
 
     public static function suite()
     {
-        return new PHPUnit_Framework_TestSuite( __CLASS__ );
+        return new \PHPUnit\Framework\TestSuite( __CLASS__ );
     }
 }
 ?>

@@ -34,7 +34,7 @@ require_once( "ustar_tar_test.php" );
  */
 class ezcArchivePaxTarTest extends ezcArchiveUstarTarTest // Extend the Ustar tests
 {
-    protected function setUp()
+    protected function setUp() : void
     {
         date_default_timezone_set( "UTC" );
         $this->tarFormat = "posix";
@@ -54,7 +54,7 @@ class ezcArchivePaxTarTest extends ezcArchiveUstarTarTest // Extend the Ustar te
         $this->setUsersGid();
     }
 
-    protected function tearDown()
+    protected function tearDown() : void
     {
         unset( $this->archive );
         unset( $this->file );
@@ -161,7 +161,7 @@ class ezcArchivePaxTarTest extends ezcArchiveUstarTarTest // Extend the Ustar te
 
     public static function suite()
     {
-        return new PHPUnit_Framework_TestSuite( __CLASS__ );
+        return new \PHPUnit\Framework\TestSuite( __CLASS__ );
     }
 }
 ?>

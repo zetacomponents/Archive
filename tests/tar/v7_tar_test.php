@@ -55,7 +55,7 @@ class ezcArchiveV7TarTest extends ezcArchiveTestCase
         return $tmpFile;
     }
 
-    protected function setUp()
+    protected function setUp() : void
     {
         date_default_timezone_set( "UTC" );
         $this->tarFormat = "v7";
@@ -87,7 +87,7 @@ class ezcArchiveV7TarTest extends ezcArchiveTestCase
         }
     }
 
-    protected function tearDown()
+    protected function tearDown() : void
     {
         unset( $this->archive );
         unset( $this->complexArchive );
@@ -1137,7 +1137,7 @@ class ezcArchiveV7TarTest extends ezcArchiveTestCase
 
     public static function suite()
     {
-        return new PHPUnit_Framework_TestSuite( __CLASS__ );
+        return new \PHPUnit\Framework\TestSuite( __CLASS__ );
     }
 }
 ?>

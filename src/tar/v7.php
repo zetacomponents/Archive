@@ -398,6 +398,11 @@ class ezcArchiveV7Tar extends ezcArchive
         $entries = $this->getEntries( $files, $prefix );
         $originalFileNumber = $this->fileNumber;
 
+        if ( is_string( $files ) )
+        {
+            $files = [ $files ];
+        }
+
         for ( $i = 0; $i < sizeof( $files ); $i++ )
         {
             // Changes the fileNumber
@@ -449,6 +454,11 @@ class ezcArchiveV7Tar extends ezcArchive
         // Do the same as in appendToCurrent(). But we know that it's possible.
         $entries = $this->getEntries( $files, $prefix );
         $originalFileNumber = $this->fileNumber;
+
+        if ( is_string( $files ) )
+        {
+            $files = [ $files ];
+        }
 
         for ( $i = 0; $i < sizeof( $files ); $i++ )
         {
