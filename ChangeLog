@@ -2,6 +2,7 @@
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - Removed an unused line which generates an error in PHP 7.2.
+- PHP 8.2 and PHPUnit 9 support.
 
 
 1.5 - Saturday 27 September 2014
