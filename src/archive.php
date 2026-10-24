@@ -481,7 +481,19 @@ abstract class ezcArchive implements Iterator
      *        True if the file shouldn't be overwritten if they already exist.
      *        For the opposite behaviour, false should be given.
      *
-     * @throws ezcArchiveValueException     if the archive contains invalid values.
+     * Entries are never written outside of $target: an entry with an absolute
+     * path or a path with a ".." component, an entry that would be written
+     * through a symbolic link that points outside of $target, and a hard link
+     * to a file outside of $target are refused with an
+     * {@link ezcArchiveValueException}. With the option
+     * {@link ezcArchiveOptions::$skipUnsafeEntries} such an entry is skipped
+     * instead and false is returned. The setuid, setgid and sticky bits are
+     * removed from the permissions, unless the option
+     * {@link ezcArchiveOptions::$preserveSpecialPermissions} is set.
+     *
+     * @throws ezcArchiveValueException     if the archive contains invalid values,
+     *                                      or if the entry would be written outside of $target
+     *                                      and the option skipUnsafeEntries is not set.
      * @throws ezcBaseFileNotFoundException if the link cannot be found.
      *
      * @return bool
@@ -503,13 +515,31 @@ abstract class ezcArchive implements Iterator
         $type = $entry->getType();
         $fileName = $target . DIRECTORY_SEPARATOR. $entry->getPath();
 
-        if ( $type == ezcArchiveEntry::IS_LINK )
+        try
         {
-            $linkName = $target . DIRECTORY_SEPARATOR . $entry->getLink();
-            if ( !file_exists( $linkName ) )
+            $this->checkRelativePath( $entry->getPath(), $isWindows );
+            $this->checkParentDirectory( $fileName, $target, $entry->getPath() );
+
+            if ( $type == ezcArchiveEntry::IS_LINK )
             {
-                throw new ezcBaseFileNotFoundException( $linkName, "link", "Hard link could not be created." );
+                $this->checkRelativePath( $entry->getLink(), $isWindows );
+
+                $linkName = $target . DIRECTORY_SEPARATOR . $entry->getLink();
+                if ( !file_exists( $linkName ) )
+                {
+                    throw new ezcBaseFileNotFoundException( $linkName, "link", "Hard link could not be created." );
+                }
+
+                // The link may lead through a symbolic link that the archive created.
+                if ( !$this->isInsideDirectory( realpath( $linkName ), $target ) )
+                {
+                    throw new ezcArchiveValueException( $entry->getLink(), "a file inside the target directory" );
+                }
             }
+        }
+        catch ( ezcArchiveValueException $e )
+        {
+            return $this->skipUnsafeEntry( $e );
         }
 
         $this->createDefaultDirectory( $fileName );
@@ -564,6 +594,12 @@ abstract class ezcArchive implements Iterator
                             // FIXME.. need to be sure that target file
                             // already extracted before copying it to link destination.
                             $sourcePath = dirname( $fileName ) . '/' . $entry->getLink();
+                            // Never copy a file from outside of the target into it.
+                            $realSourcePath = realpath( $sourcePath );
+                            if ( $realSourcePath !== false && !$this->isInsideDirectory( $realSourcePath, $target ) )
+                            {
+                                return $this->skipUnsafeEntry( new ezcArchiveValueException( $entry->getLink(), "a file inside the target directory" ) );
+                            }
                             $fileName = str_replace( '/', '\\', $fileName );
                             copy( $sourcePath, $fileName );
                         }
@@ -591,7 +627,7 @@ abstract class ezcArchive implements Iterator
                         {
                             $permissions = '0777';
                         }
-                        mkdir( $fileName, octdec( $permissions ), true );
+                        mkdir( $fileName, $this->filterPermissions( octdec( $permissions ) ), true );
                         break;
 
                     case ezcArchiveEntry::IS_FILE:
@@ -620,7 +656,8 @@ abstract class ezcArchive implements Iterator
                     $group = $entry->getGroupId();
                     $user  = $entry->getUserId();
                     $time  = $entry->getModificationTime();
-                    $perms = octdec( $entry->getPermissions() );
+                    $mode  = octdec( $entry->getPermissions() );
+                    $perms = $this->filterPermissions( $mode );
 
                     if ( $this->options && $this->options->extractCallback )
                     {
@@ -634,7 +671,11 @@ abstract class ezcArchive implements Iterator
                         @chown( $fileName, $user );
                     }
 
-                    if ( $perms != false )
+                    // An entry without any permission bits (a ZIP archive made
+                    // on Windows, for example) keeps the default permissions.
+                    // Permissions that are 0 only after removing the special
+                    // bits (mode 4000) are applied.
+                    if ( $perms !== false && $perms !== null && ( $perms != 0 || $mode != 0 ) )
                     {
                         chmod( $fileName, $perms );
                     }
@@ -731,6 +772,141 @@ abstract class ezcArchive implements Iterator
         }
 
         return false;
+    }
+
+    /**
+     * Returns false if the option skipUnsafeEntries is set, otherwise throws
+     * the exception $e.
+     *
+     * @throws ezcArchiveValueException if the option skipUnsafeEntries is not set.
+     * @param ezcArchiveValueException $e
+     * @return bool
+     */
+    protected function skipUnsafeEntry( ezcArchiveValueException $e )
+    {
+        if ( $this->options && $this->options->skipUnsafeEntries )
+        {
+            return false;
+        }
+
+        throw $e;
+    }
+
+    /**
+     * Checks that the entry path or link target $path is relative and has no
+     * ".." component.
+     *
+     * Like GNU tar, every ".." component is refused, even if the path would
+     * stay inside the target directory.
+     *
+     * On Windows, components that consist only of dots and spaces (other
+     * than ".") are refused as well, because Windows removes trailing dots
+     * and spaces and ".. " or "..." may act like "..". Components that
+     * contain a ":" (a drive or an NTFS alternate data stream) are refused
+     * there, too.
+     *
+     * @throws ezcArchiveValueException if $path is absolute or contains "..".
+     * @param string $path
+     * @param bool $isWindows
+     * @return void
+     */
+    protected function checkRelativePath( $path, $isWindows )
+    {
+        $separators = $isWindows ? '#[/\\\\]#' : '#/#';
+
+        if ( $path === '' )
+        {
+            return;
+        }
+
+        if ( $path[0] === '/' || ( $isWindows && ( $path[0] === '\\' || preg_match( '/^[A-Za-z]:/', $path ) ) ) )
+        {
+            throw new ezcArchiveValueException( $path, "a relative path" );
+        }
+
+        foreach ( preg_split( $separators, $path ) as $component )
+        {
+            if ( $component === '..' ||
+                 ( $isWindows && $component !== '.' && preg_match( '/^[. ]+$/', $component ) ) )
+            {
+                throw new ezcArchiveValueException( $path, "a path without '..' components" );
+            }
+
+            if ( $isWindows && strpos( $component, ':' ) !== false )
+            {
+                throw new ezcArchiveValueException( $path, "a path without ':'" );
+            }
+        }
+    }
+
+    /**
+     * Checks that the directory that will contain $fileName lies inside
+     * $target, also when an existing part of the path is a symbolic link.
+     *
+     * Directories that do not exist yet are created inside the deepest
+     * existing directory, so only that one needs to be resolved.
+     *
+     * @throws ezcArchiveValueException if the directory lies outside of $target.
+     * @param string $fileName  The path the entry will be written to.
+     * @param string $target    The directory the archive is extracted to.
+     * @param string $entryPath The path of the entry in the archive, for the exception.
+     * @return void
+     */
+    protected function checkParentDirectory( $fileName, $target, $entryPath )
+    {
+        if ( !file_exists( $target ) )
+        {
+            // Nothing has been extracted yet, so no symbolic link can be in the way.
+            return;
+        }
+
+        $directory = dirname( $fileName );
+        while ( !file_exists( $directory ) && !is_link( $directory ) && dirname( $directory ) !== $directory )
+        {
+            $directory = dirname( $directory );
+        }
+
+        if ( !$this->isInsideDirectory( realpath( $directory ), $target ) )
+        {
+            throw new ezcArchiveValueException( $entryPath, "a path inside the target directory" );
+        }
+    }
+
+    /**
+     * Returns true if the resolved path $realPath is $directory or lies below it.
+     *
+     * @param string|false $realPath  The result of realpath().
+     * @param string $directory
+     * @return bool
+     */
+    protected function isInsideDirectory( $realPath, $directory )
+    {
+        $realDirectory = realpath( $directory );
+        if ( $realPath === false || $realDirectory === false )
+        {
+            return false;
+        }
+
+        $realDirectory = rtrim( $realDirectory, DIRECTORY_SEPARATOR ) . DIRECTORY_SEPARATOR;
+        return $realPath . DIRECTORY_SEPARATOR === $realDirectory ||
+               strncmp( $realPath, $realDirectory, strlen( $realDirectory ) ) === 0;
+    }
+
+    /**
+     * Returns the permissions $permissions without the setuid, setgid and
+     * sticky bits, unless the option preserveSpecialPermissions is set.
+     *
+     * @param int $permissions
+     * @return int
+     */
+    protected function filterPermissions( $permissions )
+    {
+        if ( $this->options && $this->options->preserveSpecialPermissions )
+        {
+            return $permissions;
+        }
+
+        return $permissions & 0777;
     }
 
     /**
