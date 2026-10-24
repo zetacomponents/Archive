@@ -54,76 +54,71 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
      * When an ezcArchiveBlockFile is given, the block position should point to the header block.
      * This header block will be read from the file and initialized in this class.
      *
+     * Extension headers that precede the actual header are consumed: "L" (long file name),
+     * "K" (long link name), "x" (PAX extended header, of which path, linkpath, size, uid and
+     * gid are used) and "g" (PAX global header, which is skipped). Every other type flag,
+     * including NUL, is the header of an entry.
+     *
+     * @throws ezcArchiveValueException
+     *         if an extension header is larger than {@link MAX_EXTENSION_SIZE}.
+     * @throws ezcArchiveBlockSizeException
+     *         if the archive ends inside or directly after an extension header.
+     * @throws ezcArchiveException
+     *         if a PAX extended header is malformed.
      * @param ezcArchiveBlockFile $file
      */
     public function __construct( ezcArchiveBlockFile $file = null )
     {
         if ( !is_null( $file ) )
         {
-            // FIXME  Assumed a while.. check the gnu tar source file.
-            // FIXME  Check long links, really large files, etc.
-            $extensions = array();
+            $fileName = null;
+            $linkName = null;
+            $paxRecords = array();
 
-            do
+            // Every extension header moves the block position forward by at
+            // least one block, so this loop ends at the latest at the end of
+            // the archive.
+            parent::__construct( $file );
+            while ( in_array( $this->type, array( "L", "K", "x", "g" ), true ) )
             {
-                parent::__construct( $file );
-
                 switch ( $this->type )
                 {
                     case "L":
-                        $extensions["fileName"] = $this->readExtension( $file );
+                        // GNU tar stores the name with a terminating NUL.
+                        $fileName = rtrim( $this->readExtension( $file ), "\0" );
                         break;
 
                     case "K":
-                        $extensions["linkName"] = $this->readExtension( $file );
+                        $linkName = rtrim( $this->readExtension( $file ), "\0" );
                         break;
 
-                }
-            } while ( $this->type < '0' || $this->type > '9' );
-
-            parent::__construct( $file );
-
-            foreach ( $extensions as $key => $value )
-            {
-                switch ( $key )
-                {
-                    case "fileName":
-                        $this->fileName = $extensions["fileName"];
-                        $this->filePrefix = "";
+                    case "x":
+                        $paxRecords = array_merge( $paxRecords, $this->decodePaxRecords( $this->readExtension( $file ) ) );
                         break;
 
-                    case "linkName":
-                        $this->linkName = $extensions["linkName"];
+                    case "g":
+                        // Global PAX headers are not supported; skip the payload.
+                        $this->readExtension( $file );
                         break;
                 }
+
+                parent::__construct( $file );
             }
+
+            // An empty extension does not replace the name from the header.
+            if ( $fileName !== null && $fileName !== "" )
+            {
+                $this->fileName = $fileName;
+                $this->filePrefix = "";
+            }
+
+            if ( $linkName !== null && $linkName !== "" )
+            {
+                $this->linkName = $linkName;
+            }
+
+            $this->applyPaxRecords( $paxRecords );
         }
-    }
-
-    /**
-     * Reads an extended set of data from the Block file and returns it as a string.
-     *
-     * Some filenames or link names do not fit in the Ustar header, and are therefor placed in a new block.
-     * This method read the block(s) and returns the data as a string.
-     *
-     * @param ezcArchiveBlockFile $file
-     * @return string
-     */
-    protected function readExtension( ezcArchiveBlockFile $file )
-    {
-        $completeBlocks = ( int ) ( $this->fileSize / self::BLOCK_SIZE );
-        $rest = ( $this->fileSize % self::BLOCK_SIZE );
-
-        $data  = "";
-        for ( $i = 0; $i < $completeBlocks; $i++ )
-        {
-            $data .=  $file->next();
-        }
-
-        $data .= substr( $file->next(), 0, $rest );
-
-        $file->next();
-        return $data;
     }
 }
 ?>
