@@ -160,6 +160,66 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
         self::assertSame( array( "volume", "second.txt" ), $paths );
     }
 
+    public static function longNameLengths()
+    {
+        return array(
+            array( 99 ),   // The name and the NUL fill one block partly.
+            array( 511 ),  // The name and the NUL fill exactly one block.
+            array( 1023 ), // The name and the NUL fill exactly two blocks.
+        );
+    }
+
+    /**
+     * @dataProvider longNameLengths
+     */
+    public function testLongFileName( $length )
+    {
+        // Directories of 50 characters keep every path component short.
+        $name = substr( str_repeat( str_repeat( "n", 49 ) . "/", 30 ), 0, $length - 4 ) . ".txt";
+
+        // The data of the first entry looks like a header. It must never be
+        // parsed as one.
+        $blocks = ezcArchiveTarTestBuilder::extension( "L", "$name\0" ) .
+                  ezcArchiveTarTestBuilder::file( "short.txt", ezcArchiveTarTestBuilder::file( "forged.txt", "forged" ) ) .
+                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
+
+        // Only list the entries: the long names do not fit PATH_MAX everywhere.
+        $dir = $this->getTempDir();
+        $archive = ezcArchive::open( ezcArchiveTarTestBuilder::write( "$dir/archive.tar", $blocks ), ezcArchive::TAR_GNU );
+
+        $entries = array();
+        foreach ( $archive as $entry )
+        {
+            $entries[$entry->getPath()] = $entry->getSize();
+        }
+        self::assertSame( array( $name => 1024, "second.txt" => 6 ), $entries );
+    }
+
+    public function testEmptyLongFileNameIsIgnored()
+    {
+        $blocks = ezcArchiveTarTestBuilder::extension( "L", "" ) .
+                  ezcArchiveTarTestBuilder::file( "first.txt", "first" ) .
+                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
+
+        $dir = $this->getTempDir();
+        $archive = ezcArchive::open( ezcArchiveTarTestBuilder::write( "$dir/archive.tar", $blocks ), ezcArchive::TAR_GNU );
+
+        $entries = array();
+        foreach ( $archive as $entry )
+        {
+            $entries[$entry->getPath()] = $entry->getSize();
+        }
+        self::assertSame( array( "first.txt" => 5, "second.txt" => 6 ), $entries );
+    }
+
+    public function testLongLinkNameHasNoTrailingNul()
+    {
+        $blocks = ezcArchiveTarTestBuilder::extension( "K", "target.txt\0" ) .
+                  ezcArchiveTarTestBuilder::header( "link", "2", 0, "ignored" );
+
+        self::assertSame( array( "link" => "-> target.txt" ), $this->readEntries( $blocks ) );
+    }
+
     public function testLongFileNameTooLarge()
     {
         $blocks = ezcArchiveTarTestBuilder::header( "././@LongLink", "L", 077777777777 ) .
@@ -174,6 +234,17 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
         {
             self::assertStringContainsString( "8589934591", $e->getMessage() );
         }
+    }
+
+    public function testLongFileNameAtMaximumSize()
+    {
+        $name = str_repeat( "m", ezcArchiveUstarHeader::MAX_EXTENSION_SIZE - 1 );
+        $blocks = ezcArchiveTarTestBuilder::extension( "L", "$name\0" ) .
+                  ezcArchiveTarTestBuilder::header( "short", "5", 0 );
+
+        $dir = $this->getTempDir();
+        $archive = ezcArchive::open( ezcArchiveTarTestBuilder::write( "$dir/archive.tar", $blocks ), ezcArchive::TAR_GNU );
+        self::assertSame( $name, $archive->current()->getPath() );
     }
 
     public function testArchiveEndsInsideLongFileName()

@@ -68,7 +68,8 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
     {
         if ( !is_null( $file ) )
         {
-            $extensions = array();
+            $fileName = null;
+            $linkName = null;
 
             // Every extension header moves the block position forward by at
             // least one block, so this loop ends at the latest at the end of
@@ -81,11 +82,12 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
                 switch ( $this->type )
                 {
                     case "L":
-                        $extensions["fileName"] = $this->readExtension( $file );
+                        // GNU tar stores the name with a terminating NUL.
+                        $fileName = rtrim( $this->readExtension( $file ), "\0" );
                         break;
 
                     case "K":
-                        $extensions["linkName"] = $this->readExtension( $file );
+                        $linkName = rtrim( $this->readExtension( $file ), "\0" );
                         break;
 
                     case "x":
@@ -100,19 +102,16 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
                 }
             } while ( $isExtension );
 
-            foreach ( $extensions as $key => $value )
+            // An empty extension does not replace the name from the header.
+            if ( $fileName !== null && $fileName !== "" )
             {
-                switch ( $key )
-                {
-                    case "fileName":
-                        $this->fileName = $extensions["fileName"];
-                        $this->filePrefix = "";
-                        break;
+                $this->fileName = $fileName;
+                $this->filePrefix = "";
+            }
 
-                    case "linkName":
-                        $this->linkName = $extensions["linkName"];
-                        break;
-                }
+            if ( $linkName !== null && $linkName !== "" )
+            {
+                $this->linkName = $linkName;
             }
         }
     }
