@@ -117,6 +117,17 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
         self::assertSame( array( $name => 1024, "second.txt" => 6 ), $entries );
     }
 
+    public function testLongFileNamePayloadAtMaximumSize()
+    {
+        $name = str_repeat( "m", ezcArchiveUstarHeader::MAX_EXTENSION_SIZE );
+        $blocks = ezcArchiveTarTestBuilder::extension( "L", $name ) .
+                  ezcArchiveTarTestBuilder::header( "short", "5", 0 );
+
+        $dir = $this->getTempDir();
+        $archive = ezcArchive::open( ezcArchiveTarTestBuilder::write( "$dir/archive.tar", $blocks ), ezcArchive::TAR_GNU );
+        self::assertSame( $name, $archive->current()->getPath() );
+    }
+
     public function testGnuReaderSkipsPaxGlobalHeader()
     {
         $blocks = ezcArchiveTarTestBuilder::extension( "g", ezcArchiveTarTestBuilder::paxRecord( "comment", "global" ) ) .
@@ -147,6 +158,40 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
             $paths[] = $entry->getPath();
         }
         self::assertSame( array( "volume", "second.txt" ), $paths );
+    }
+
+    public function testLongFileNameTooLarge()
+    {
+        $blocks = ezcArchiveTarTestBuilder::header( "././@LongLink", "L", 077777777777 ) .
+                  ezcArchiveTarTestBuilder::file( "first.txt", "first" );
+
+        try
+        {
+            $this->readEntries( $blocks );
+            self::fail( "Expected an ezcArchiveValueException." );
+        }
+        catch ( ezcArchiveValueException $e )
+        {
+            self::assertStringContainsString( "8589934591", $e->getMessage() );
+        }
+    }
+
+    public function testArchiveEndsInsideLongFileName()
+    {
+        $dir = $this->getTempDir();
+        file_put_contents( "$dir/archive.tar", ezcArchiveTarTestBuilder::header( "././@LongLink", "L", 2000 ) . str_repeat( "n", 1024 ) );
+
+        $this->expectException( ezcArchiveBlockSizeException::class );
+        ezcArchive::open( "$dir/archive.tar", ezcArchive::TAR_GNU )->current();
+    }
+
+    public function testArchiveEndsAfterLongFileName()
+    {
+        $dir = $this->getTempDir();
+        file_put_contents( "$dir/archive.tar", ezcArchiveTarTestBuilder::extension( "L", "name\0" ) );
+
+        $this->expectException( ezcArchiveBlockSizeException::class );
+        ezcArchive::open( "$dir/archive.tar", ezcArchive::TAR_GNU )->current();
     }
 
     public static function suite()

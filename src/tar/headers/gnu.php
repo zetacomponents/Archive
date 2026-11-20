@@ -58,6 +58,10 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
      * "K" (long link name), and "x" and "g" (PAX extended and global headers, which are
      * skipped). Every other type flag, including NUL, is the header of an entry.
      *
+     * @throws ezcArchiveValueException
+     *         if an extension header is larger than {@link MAX_EXTENSION_SIZE}.
+     * @throws ezcArchiveBlockSizeException
+     *         if the archive ends inside or directly after an extension header.
      * @param ezcArchiveBlockFile $file
      */
     public function __construct( ezcArchiveBlockFile $file = null )
@@ -120,21 +124,38 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
      * This method read the block(s) and returns the data as a string. After this method returns, the
      * block position of $file points to the header that follows the payload.
      *
+     * @throws ezcArchiveValueException
+     *         if the payload is larger than {@link MAX_EXTENSION_SIZE}.
+     * @throws ezcArchiveBlockSizeException
+     *         if the archive ends before the payload or the next header.
      * @param ezcArchiveBlockFile $file
      * @return string
      */
     protected function readExtension( ezcArchiveBlockFile $file )
     {
+        if ( $this->fileSize > self::MAX_EXTENSION_SIZE )
+        {
+            throw new ezcArchiveValueException( $this->fileSize, "an extension header size of at most " . self::MAX_EXTENSION_SIZE . " bytes" );
+        }
+
         $blocks = $file->getBlocksFromBytes( $this->fileSize );
 
         $data = "";
         for ( $i = 0; $i < $blocks; $i++ )
         {
-            $data .= $file->next();
+            $block = $file->next();
+            if ( $block === false )
+            {
+                throw new ezcArchiveBlockSizeException( $file->getFileName(), "The archive ends inside an extension header." );
+            }
+            $data .= $block;
         }
 
         // Move to the header the extension applies to.
-        $file->next();
+        if ( $file->next() === false )
+        {
+            throw new ezcArchiveBlockSizeException( $file->getFileName(), "The archive ends after an extension header." );
+        }
 
         return substr( $data, 0, $this->fileSize );
     }
