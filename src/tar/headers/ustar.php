@@ -76,6 +76,12 @@
 class ezcArchiveUstarHeader extends ezcArchiveV7Header
 {
     /**
+     * The maximum size in bytes of the payload of an extension header (GNU
+     * long name or link, PAX extended header) that is read into memory.
+     */
+    const MAX_EXTENSION_SIZE = 65536;
+
+    /**
      * Sets the property $name to $value.
      *
      * @throws ezcBasePropertyNotFoundException if the property does not exist.
@@ -407,6 +413,7 @@ class ezcArchiveUstarHeader extends ezcArchiveV7Header
         switch ( $this->type )
         {
             case "\0":
+            case "":
             case 0:
                 $struct->type = ezcArchiveEntry::IS_FILE;
                 break;
