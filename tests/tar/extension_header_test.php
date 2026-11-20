@@ -316,6 +316,27 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
         self::assertSame( array( "from-header.txt" => "header", "link" => "-> target.txt" ), $this->readEntries( $blocks, $type ) );
     }
 
+    public function testArchiveEndsInsideEntryData()
+    {
+        $blocks = ezcArchiveTarTestBuilder::header( "short.txt", "0", 2000 ) . ezcArchiveTarTestBuilder::data( "data" );
+
+        $this->expectException( ezcArchiveBlockSizeException::class );
+        $this->readEntries( $blocks );
+    }
+
+    /**
+     * @dataProvider readers
+     */
+    public function testPaxSizeRecordLargerThanArchive( $type )
+    {
+        // The size record is not limited by the 12 digits of the header field.
+        $blocks = ezcArchiveTarTestBuilder::extension( "x", ezcArchiveTarTestBuilder::paxRecord( "size", "999999999999999999" ) ) .
+                  ezcArchiveTarTestBuilder::header( "huge.txt", "0", 0 ) . ezcArchiveTarTestBuilder::data( "data" );
+
+        $this->expectException( ezcArchiveBlockSizeException::class );
+        $this->readEntries( $blocks, $type );
+    }
+
     public static function malformedPaxRecords()
     {
         return array(
