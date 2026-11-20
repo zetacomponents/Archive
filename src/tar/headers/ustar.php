@@ -76,6 +76,12 @@
 class ezcArchiveUstarHeader extends ezcArchiveV7Header
 {
     /**
+     * The maximum size in bytes of the payload of an extension header (GNU
+     * long name or link, PAX extended header) that is read into memory.
+     */
+    const MAX_EXTENSION_SIZE = 65536;
+
+    /**
      * Sets the property $name to $value.
      *
      * @throws ezcBasePropertyNotFoundException if the property does not exist.
@@ -171,6 +177,154 @@ class ezcArchiveUstarHeader extends ezcArchiveV7Header
 
             $this->handleOwner();
          }
+    }
+
+    /**
+     * Reads the data blocks that belong to the current extension header and
+     * returns the data as a string.
+     *
+     * Extension headers (GNU long names, PAX extended headers) store their
+     * payload in the data blocks that follow the header. The size of the
+     * payload is taken from the fileSize property. After this method returns,
+     * the block position of $file points to the header that follows the
+     * payload.
+     *
+     * @throws ezcArchiveValueException
+     *         if the payload is larger than {@link MAX_EXTENSION_SIZE}.
+     * @throws ezcArchiveBlockSizeException
+     *         if the archive ends before the payload or the next header.
+     * @param ezcArchiveBlockFile $file
+     * @return string
+     */
+    protected function readExtension( ezcArchiveBlockFile $file )
+    {
+        if ( $this->fileSize > self::MAX_EXTENSION_SIZE )
+        {
+            throw new ezcArchiveValueException( $this->fileSize, "an extension header size of at most " . self::MAX_EXTENSION_SIZE . " bytes" );
+        }
+
+        $blocks = $file->getBlocksFromBytes( $this->fileSize );
+
+        $data = "";
+        for ( $i = 0; $i < $blocks; $i++ )
+        {
+            $block = $file->next();
+            if ( $block === false )
+            {
+                throw new ezcArchiveBlockSizeException( $file->getFileName(), "The archive ends inside an extension header." );
+            }
+            $data .= $block;
+        }
+
+        // Move to the header the extension applies to.
+        if ( $file->next() === false )
+        {
+            throw new ezcArchiveBlockSizeException( $file->getFileName(), "The archive ends after an extension header." );
+        }
+
+        return substr( $data, 0, $this->fileSize );
+    }
+
+    /**
+     * Decodes the records of a PAX extended header and returns them as an
+     * array with the keywords as keys.
+     *
+     * Each record has the form "<length> <keyword>=<value>\n", where <length>
+     * is the decimal length of the whole record, including the length field
+     * and the trailing newline.
+     *
+     * @throws ezcArchiveException if a record is malformed.
+     * @param string $data
+     * @return array(string=>string)
+     */
+    protected function decodePaxRecords( $data )
+    {
+        $result = array();
+        $offset = 0;
+        $dataLength = strlen( $data );
+
+        while ( $offset < $dataLength && $data[$offset] !== "\0" )
+        {
+            $space = strpos( $data, " ", $offset );
+            if ( $space === false )
+            {
+                throw new ezcArchiveException( "Malformed record in PAX extended header." );
+            }
+
+            $length = substr( $data, $offset, $space - $offset );
+            if ( !preg_match( '/^[0-9]+$/', $length ) )
+            {
+                throw new ezcArchiveException( "Malformed record length in PAX extended header." );
+            }
+            $length = (int) $length;
+
+            // The record must at least hold the length, the space, "=" and "\n".
+            if ( $length < $space - $offset + 3 || $offset + $length > $dataLength )
+            {
+                throw new ezcArchiveException( "Malformed record length in PAX extended header." );
+            }
+
+            $record = substr( $data, $space + 1, $offset + $length - $space - 1 );
+            $equalSign = strpos( $record, "=" );
+            if ( $equalSign === false || substr( $record, -1 ) !== "\n" )
+            {
+                throw new ezcArchiveException( "Malformed record in PAX extended header." );
+            }
+
+            $result[ substr( $record, 0, $equalSign ) ] = substr( $record, $equalSign + 1, -1 );
+
+            $offset += $length;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Applies the values of PAX extended header records to this header.
+     *
+     * Only the records that this implementation can represent are used:
+     * path, linkpath, size, uid and gid. A record with an empty value is
+     * ignored: POSIX defines it as removing the keyword, so the value from
+     * the header itself applies (as for an empty GNU long name).
+     *
+     * @throws ezcArchiveException if a numeric record is not a number.
+     * @param array(string=>string) $records
+     * @return void
+     */
+    protected function applyPaxRecords( array $records )
+    {
+        foreach ( $records as $key => $value )
+        {
+            if ( $value === "" )
+            {
+                continue;
+            }
+
+            switch ( $key )
+            {
+                case "path":
+                    $this->fileName = $value; // Really long file names.
+                    $this->filePrefix = "";
+                    break;
+
+                case "linkpath":
+                    $this->linkName = $value; // Long link names.
+                    break;
+
+                case "size":
+                case "uid":
+                case "gid":
+                    if ( !preg_match( '/^[0-9]+$/', $value ) )
+                    {
+                        throw new ezcArchiveException( "Malformed {$key} record in PAX extended header." );
+                    }
+
+                    // For sizes greater than 8589934591 bytes and IDs larger than 2097151.
+                    $property = array( "size" => "fileSize", "uid" => "userId", "gid" => "groupId" );
+                    $this->{$property[$key]} = (int) $value;
+                    break;
+            }
+        }
     }
 
     /**
@@ -407,6 +561,7 @@ class ezcArchiveUstarHeader extends ezcArchiveV7Header
         switch ( $this->type )
         {
             case "\0":
+            case "":
             case 0:
                 $struct->type = ezcArchiveEntry::IS_FILE;
                 break;

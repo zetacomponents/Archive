@@ -238,6 +238,8 @@ class ezcArchiveV7Tar extends ezcArchive
     /**
      * Writes the file data from the current entry to the given file.
      *
+     * @throws ezcArchiveBlockSizeException
+     *         if the archive ends inside the data of the entry.
      * @param string $targetPath  The absolute or relative path of the target file.
      * @return bool
      */
@@ -265,12 +267,29 @@ class ezcArchiveV7Tar extends ezcArchive
             //  Write to file
             $fp = fopen( $targetPath, "w" );
 
+            // The size may come from a PAX extended header and is then not
+            // limited by the header field, so stop at the end of the archive.
             for ( $i = 0; $i < $completeBlocks; $i++ )
             {
-                fwrite( $fp, $this->file->next() );
+                $block = $this->file->next();
+                if ( $block === false )
+                {
+                    fclose( $fp );
+                    throw new ezcArchiveBlockSizeException( $this->file->getFileName(), "The archive ends inside the data of an entry." );
+                }
+                fwrite( $fp, $block );
             }
 
-            fwrite( $fp, $this->file->next(), $rest );
+            if ( $rest > 0 )
+            {
+                $block = $this->file->next();
+                if ( $block === false )
+                {
+                    fclose( $fp );
+                    throw new ezcArchiveBlockSizeException( $this->file->getFileName(), "The archive ends inside the data of an entry." );
+                }
+                fwrite( $fp, $block, $rest );
+            }
             fclose( $fp );
          }
          else

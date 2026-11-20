@@ -75,94 +75,48 @@ class ezcArchivePaxHeader extends ezcArchiveUstarHeader
     }
 
     /**
-     * Returns an array with pax header information.
-     *
-     * This method reads an extended set of data from the ezcArchiveBlockFile
-     * $file and returns the values in an array.
-     *
-     * @param ezcArchiveBlockFile $file
-     * @return array(string=>string)
-     */
-    protected function getPaxDecodedHeader( ezcArchiveBlockFile $file )
-    {
-        $result = array();
-
-        // next block has the info.
-        $file->next();
-
-        $data = $file->current();
-
-        $offset = 0;
-
-        while ( strcmp( $data[$offset], "\0" ) != 0 )
-        {
-            $space = strpos( $data, " ", $offset );
-
-            $length = substr( $data, $offset, $space - $offset );
-            $equalSign = strpos( $data, "=",  $space );
-
-            $keyword = substr( $data, $space + 1, $equalSign - $space - 1 );
-
-            $value = rtrim( substr( $data, $equalSign + 1, $length - $equalSign - 1 ), "\n" );
-
-            $result[ $keyword ] = $value;
-
-            $offset += $length;
-        }
-
-        return $result;
-    }
-
-    /**
      * Creates and initializes a new header.
      *
      * If the ezcArchiveBlockFile $file is null then the header will be empty.
      * When an ezcArchiveBlockFile is given, the block position should point to the header block.
      * This header block will be read from the file and initialized in this class.
      *
+     * Extended headers ("x") that precede the actual header are consumed, and their path,
+     * linkpath, size, uid and gid records are applied. Global headers ("g") are skipped.
+     *
+     * @throws ezcArchiveValueException
+     *         if an extended header is larger than {@link MAX_EXTENSION_SIZE}.
+     * @throws ezcArchiveBlockSizeException
+     *         if the archive ends inside or directly after an extended header.
+     * @throws ezcArchiveException
+     *         if an extended header is malformed.
      * @param ezcArchiveBlockFile $file
      */
     public function __construct( ezcArchiveBlockFile $file = null )
     {
         if ( !is_null( $file ) )
         {
-            parent::__construct( $file );
+            $paxRecords = array();
 
-            if ( $this->type == "x" )
+            // Every extended header moves the block position forward by at
+            // least one block, so this loop ends at the latest at the end of
+            // the archive.
+            do
             {
-                $paxArray = $this->getPaxDecodedHeader( $file );
-                $file->next();
-            }
+                parent::__construct( $file );
 
-            parent::__construct( $file );
-
-            // Override some fields.
-            foreach ( $paxArray as $key => $value )
-            {
-                switch ( $key )
+                $isExtension = ( $this->type === "x" || $this->type === "g" );
+                if ( $isExtension )
                 {
-                    case "gid":
-                        $this->groupId = $value;
-                        break;  // For group IDs larger than 2097151.
-
-                    case "linkpath":
-                        $this->linkName = $value;
-                        break;  // Long link names?
-
-                    case "path":
-                        $this->fileName = $value;
-                        $this->filePrefix = "";
-                        break; // Really long file names.
-
-                    case "size":
-                        $this->size = $value;
-                        break;  // For files with a size greater than 8589934591 bytes.
-
-                    case "uid":
-                        $this->userId = $value;
-                        break;  // For user IDs larger than 2097151.
+                    $data = $this->readExtension( $file );
+                    if ( $this->type === "x" )
+                    {
+                        $paxRecords = array_merge( $paxRecords, $this->decodePaxRecords( $data ) );
+                    }
                 }
-            }
+            } while ( $isExtension );
+
+            $this->applyPaxRecords( $paxRecords );
         }
     }
 }
