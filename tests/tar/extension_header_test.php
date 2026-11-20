@@ -1,0 +1,122 @@
+<?php
+/**
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ * 
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ *
+ * @license http://www.apache.org/licenses/LICENSE-2.0 Apache License, Version 2.0
+ * @filesource
+ * @package Archive
+ * @version //autogen//
+ * @subpackage Tests
+ */
+
+require_once( dirname( __FILE__ ) . "/../archive_test_case.php" );
+require_once( dirname( __FILE__ ) . "/tar_test_builder.php" );
+
+/**
+ * Tests reading extension headers (GNU long names, PAX extended headers)
+ * from archives that are built block by block.
+ *
+ * @package Archive
+ * @version //autogen//
+ * @subpackage Tests
+ */
+class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
+{
+    protected function setUp() : void
+    {
+        date_default_timezone_set( "UTC" );
+        $this->createTempDir( "ezcArchive_" );
+    }
+
+    protected function tearDown() : void
+    {
+        $this->removeTempDir();
+    }
+
+    /**
+     * Writes $blocks to a temporary archive, opens it with $type and returns
+     * an array with path => contents (or link target) for every entry.
+     */
+    protected function readEntries( $blocks, $type = ezcArchive::TAR_GNU )
+    {
+        $dir = $this->getTempDir();
+        $archive = ezcArchive::open( ezcArchiveTarTestBuilder::write( "$dir/archive.tar", $blocks ), $type );
+
+        $result = array();
+        foreach ( $archive as $entry )
+        {
+            if ( $entry->getType() == ezcArchiveEntry::IS_SYMBOLIC_LINK )
+            {
+                $result[$entry->getPath()] = "-> " . $entry->getLink();
+                continue;
+            }
+
+            $archive->extractCurrent( "$dir/out" );
+            $result[$entry->getPath()] = file_get_contents( "$dir/out/" . $entry->getPath() );
+        }
+        return $result;
+    }
+
+    public function testGnuReaderSkipsPaxExtendedHeader()
+    {
+        $blocks = ezcArchiveTarTestBuilder::extension( "x", ezcArchiveTarTestBuilder::paxRecord( "path", "dir/from-pax.txt" ) ) .
+                  ezcArchiveTarTestBuilder::file( "from-header.txt", "pax" ) .
+                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
+
+        self::assertSame( array( "from-header.txt" => "pax", "second.txt" => "second" ), $this->readEntries( $blocks ) );
+    }
+
+    public function testGnuReaderSkipsPaxGlobalHeader()
+    {
+        $blocks = ezcArchiveTarTestBuilder::extension( "g", ezcArchiveTarTestBuilder::paxRecord( "comment", "global" ) ) .
+                  ezcArchiveTarTestBuilder::file( "first.txt", "first" ) .
+                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
+
+        self::assertSame( array( "first.txt" => "first", "second.txt" => "second" ), $this->readEntries( $blocks ) );
+    }
+
+    public function testGnuReaderReadsNulTypeFlagAsFile()
+    {
+        $blocks = ezcArchiveTarTestBuilder::header( "nul.txt", "\0", 3 ) . ezcArchiveTarTestBuilder::data( "nul" ) .
+                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
+
+        self::assertSame( array( "nul.txt" => "nul", "second.txt" => "second" ), $this->readEntries( $blocks ) );
+    }
+
+    public function testGnuReaderReturnsUnknownTypeAsEntry()
+    {
+        $dir = $this->getTempDir();
+        $blocks = ezcArchiveTarTestBuilder::header( "volume", "V", 0 ) .
+                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
+        $archive = ezcArchive::open( ezcArchiveTarTestBuilder::write( "$dir/archive.tar", $blocks ), ezcArchive::TAR_GNU );
+
+        $paths = array();
+        foreach ( $archive as $entry )
+        {
+            $paths[] = $entry->getPath();
+        }
+        self::assertSame( array( "volume", "second.txt" ), $paths );
+    }
+
+    public static function suite()
+    {
+        return new \PHPUnit\Framework\TestSuite( __CLASS__ );
+    }
+}
+?>
