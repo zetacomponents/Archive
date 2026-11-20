@@ -82,6 +82,41 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
         self::assertSame( array( "from-header.txt" => "pax", "second.txt" => "second" ), $this->readEntries( $blocks ) );
     }
 
+    public static function longNamePayloadSizes()
+    {
+        return array(
+            array( 100 ),  // The payload fills one block partly.
+            array( 512 ),  // The payload fills exactly one block.
+            array( 1024 ), // The payload fills exactly two blocks.
+        );
+    }
+
+    /**
+     * @dataProvider longNamePayloadSizes
+     */
+    public function testLongFileNamePayloadSize( $size )
+    {
+        // Directories of 50 characters keep every path component short.
+        $name = substr( str_repeat( str_repeat( "n", 49 ) . "/", 30 ), 0, $size - 4 ) . ".txt";
+
+        // The data of the first entry looks like a header. It must never be
+        // parsed as one.
+        $blocks = ezcArchiveTarTestBuilder::extension( "L", $name ) .
+                  ezcArchiveTarTestBuilder::file( "short.txt", ezcArchiveTarTestBuilder::file( "forged.txt", "forged" ) ) .
+                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
+
+        // Only list the entries: the long names do not fit PATH_MAX everywhere.
+        $dir = $this->getTempDir();
+        $archive = ezcArchive::open( ezcArchiveTarTestBuilder::write( "$dir/archive.tar", $blocks ), ezcArchive::TAR_GNU );
+
+        $entries = array();
+        foreach ( $archive as $entry )
+        {
+            $entries[$entry->getPath()] = $entry->getSize();
+        }
+        self::assertSame( array( $name => 1024, "second.txt" => 6 ), $entries );
+    }
+
     public function testGnuReaderSkipsPaxGlobalHeader()
     {
         $blocks = ezcArchiveTarTestBuilder::extension( "g", ezcArchiveTarTestBuilder::paxRecord( "comment", "global" ) ) .

@@ -117,26 +117,26 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
      * Reads an extended set of data from the Block file and returns it as a string.
      *
      * Some filenames or link names do not fit in the Ustar header, and are therefor placed in a new block.
-     * This method read the block(s) and returns the data as a string.
+     * This method read the block(s) and returns the data as a string. After this method returns, the
+     * block position of $file points to the header that follows the payload.
      *
      * @param ezcArchiveBlockFile $file
      * @return string
      */
     protected function readExtension( ezcArchiveBlockFile $file )
     {
-        $completeBlocks = ( int ) ( $this->fileSize / self::BLOCK_SIZE );
-        $rest = ( $this->fileSize % self::BLOCK_SIZE );
+        $blocks = $file->getBlocksFromBytes( $this->fileSize );
 
-        $data  = "";
-        for ( $i = 0; $i < $completeBlocks; $i++ )
+        $data = "";
+        for ( $i = 0; $i < $blocks; $i++ )
         {
-            $data .=  $file->next();
+            $data .= $file->next();
         }
 
-        $data .= substr( $file->next(), 0, $rest );
-
+        // Move to the header the extension applies to.
         $file->next();
-        return $data;
+
+        return substr( $data, 0, $this->fileSize );
     }
 }
 ?>
