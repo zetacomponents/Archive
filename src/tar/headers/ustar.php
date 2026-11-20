@@ -407,6 +407,7 @@ class ezcArchiveUstarHeader extends ezcArchiveV7Header
         switch ( $this->type )
         {
             case "\0":
+            case "":
             case 0:
                 $struct->type = ezcArchiveEntry::IS_FILE;
                 break;
