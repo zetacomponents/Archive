@@ -73,15 +73,6 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
         return $result;
     }
 
-    public function testGnuReaderSkipsPaxExtendedHeader()
-    {
-        $blocks = ezcArchiveTarTestBuilder::extension( "x", ezcArchiveTarTestBuilder::paxRecord( "path", "dir/from-pax.txt" ) ) .
-                  ezcArchiveTarTestBuilder::file( "from-header.txt", "pax" ) .
-                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
-
-        self::assertSame( array( "from-header.txt" => "pax", "second.txt" => "second" ), $this->readEntries( $blocks ) );
-    }
-
     public static function longNamePayloadSizes()
     {
         return array(
@@ -126,6 +117,15 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
         $dir = $this->getTempDir();
         $archive = ezcArchive::open( ezcArchiveTarTestBuilder::write( "$dir/archive.tar", $blocks ), ezcArchive::TAR_GNU );
         self::assertSame( $name, $archive->current()->getPath() );
+    }
+
+    public function testGnuReaderAppliesPaxExtendedHeader()
+    {
+        $blocks = ezcArchiveTarTestBuilder::extension( "x", ezcArchiveTarTestBuilder::paxRecord( "path", "dir/from-pax.txt" ) ) .
+                  ezcArchiveTarTestBuilder::file( "from-header.txt", "pax" ) .
+                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
+
+        self::assertSame( array( "dir/from-pax.txt" => "pax", "second.txt" => "second" ), $this->readEntries( $blocks ) );
     }
 
     public function testGnuReaderSkipsPaxGlobalHeader()
@@ -268,6 +268,7 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
     public static function readers()
     {
         return array(
+            array( ezcArchive::TAR_GNU ),
             array( ezcArchive::TAR_PAX ),
         );
     }
@@ -355,7 +356,7 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
      */
     public function testMalformedPaxRecordsAreRejected( $records )
     {
-        foreach ( array( ezcArchive::TAR_PAX ) as $type )
+        foreach ( array( ezcArchive::TAR_GNU, ezcArchive::TAR_PAX ) as $type )
         {
             $blocks = ezcArchiveTarTestBuilder::extension( "x", $records ) .
                       ezcArchiveTarTestBuilder::file( "file.txt", "file" );

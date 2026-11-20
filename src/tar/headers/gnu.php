@@ -55,13 +55,16 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
      * This header block will be read from the file and initialized in this class.
      *
      * Extension headers that precede the actual header are consumed: "L" (long file name),
-     * "K" (long link name), and "x" and "g" (PAX extended and global headers, which are
-     * skipped). Every other type flag, including NUL, is the header of an entry.
+     * "K" (long link name), "x" (PAX extended header, of which path, linkpath, size, uid and
+     * gid are used) and "g" (PAX global header, which is skipped). Every other type flag,
+     * including NUL, is the header of an entry.
      *
      * @throws ezcArchiveValueException
      *         if an extension header is larger than {@link MAX_EXTENSION_SIZE}.
      * @throws ezcArchiveBlockSizeException
      *         if the archive ends inside or directly after an extension header.
+     * @throws ezcArchiveException
+     *         if a PAX extended header is malformed.
      * @param ezcArchiveBlockFile $file
      */
     public function __construct( ezcArchiveBlockFile $file = null )
@@ -70,6 +73,7 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
         {
             $fileName = null;
             $linkName = null;
+            $paxRecords = array();
 
             // Every extension header moves the block position forward by at
             // least one block, so this loop ends at the latest at the end of
@@ -91,8 +95,11 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
                         break;
 
                     case "x":
+                        $paxRecords = array_merge( $paxRecords, $this->decodePaxRecords( $this->readExtension( $file ) ) );
+                        break;
+
                     case "g":
-                        // PAX extended and global headers are not supported; skip the payload.
+                        // Global PAX headers are not supported; skip the payload.
                         $this->readExtension( $file );
                         break;
 
@@ -113,6 +120,8 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
             {
                 $this->linkName = $linkName;
             }
+
+            $this->applyPaxRecords( $paxRecords );
         }
     }
 }
