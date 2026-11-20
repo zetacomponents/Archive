@@ -265,6 +265,91 @@ class ezcArchiveTarExtensionHeaderTest extends ezcArchiveTestCase
         ezcArchive::open( "$dir/archive.tar", ezcArchive::TAR_GNU )->current();
     }
 
+    public static function readers()
+    {
+        return array(
+            array( ezcArchive::TAR_PAX ),
+        );
+    }
+
+    /**
+     * @dataProvider readers
+     */
+    public function testPaxRecordsSpanningSeveralBlocks( $type )
+    {
+        $path = str_repeat( "p/", 400 ) . "file.txt";
+        $records = ezcArchiveTarTestBuilder::paxRecord( "comment", str_repeat( "c", 600 ) ) .
+                   ezcArchiveTarTestBuilder::paxRecord( "path", $path ) .
+                   ezcArchiveTarTestBuilder::paxRecord( "linkpath", "unused" );
+        $blocks = ezcArchiveTarTestBuilder::extension( "x", $records ) .
+                  ezcArchiveTarTestBuilder::file( "short.txt", "long" ) .
+                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
+
+        self::assertSame( array( $path => "long", "second.txt" => "second" ), $this->readEntries( $blocks, $type ) );
+    }
+
+    /**
+     * @dataProvider readers
+     */
+    public function testPaxSizeRecord( $type )
+    {
+        $blocks = ezcArchiveTarTestBuilder::extension( "x", ezcArchiveTarTestBuilder::paxRecord( "size", "5" ) ) .
+                  ezcArchiveTarTestBuilder::header( "sized.txt", "0", 0 ) . ezcArchiveTarTestBuilder::data( "sized" ) .
+                  ezcArchiveTarTestBuilder::file( "second.txt", "second" );
+
+        self::assertSame( array( "sized.txt" => "sized", "second.txt" => "second" ), $this->readEntries( $blocks, $type ) );
+    }
+
+    /**
+     * @dataProvider readers
+     */
+    public function testEmptyPaxRecordsAreIgnored( $type )
+    {
+        $records = ezcArchiveTarTestBuilder::paxRecord( "path", "" ) .
+                   ezcArchiveTarTestBuilder::paxRecord( "linkpath", "" ) .
+                   ezcArchiveTarTestBuilder::paxRecord( "size", "" );
+        $blocks = ezcArchiveTarTestBuilder::extension( "x", $records ) .
+                  ezcArchiveTarTestBuilder::file( "from-header.txt", "header" ) .
+                  ezcArchiveTarTestBuilder::extension( "x", ezcArchiveTarTestBuilder::paxRecord( "linkpath", "" ) ) .
+                  ezcArchiveTarTestBuilder::header( "link", "2", 0, "target.txt" );
+
+        self::assertSame( array( "from-header.txt" => "header", "link" => "-> target.txt" ), $this->readEntries( $blocks, $type ) );
+    }
+
+    public static function malformedPaxRecords()
+    {
+        return array(
+            array( "0 path=x\n" ),       // A zero length never advances.
+            array( "path=x\n" ),         // No length.
+            array( "x path=y\n" ),       // Not a number.
+            array( "4 path=x\n" ),       // Shorter than its contents.
+            array( "99 path=x\n" ),      // Longer than the header.
+            array( "10 pathxyz\n" ),     // No "=".
+            array( "9 path=xy" ),        // No newline.
+        );
+    }
+
+    /**
+     * @dataProvider malformedPaxRecords
+     */
+    public function testMalformedPaxRecordsAreRejected( $records )
+    {
+        foreach ( array( ezcArchive::TAR_PAX ) as $type )
+        {
+            $blocks = ezcArchiveTarTestBuilder::extension( "x", $records ) .
+                      ezcArchiveTarTestBuilder::file( "file.txt", "file" );
+            try
+            {
+                $this->readEntries( $blocks, $type );
+                self::fail( "Expected an ezcArchiveException." );
+            }
+            catch ( ezcArchiveException $e )
+            {
+                self::assertStringContainsString( "PAX extended header", $e->getMessage() );
+            }
+        }
+    }
+
     public static function suite()
     {
         return new \PHPUnit\Framework\TestSuite( __CLASS__ );

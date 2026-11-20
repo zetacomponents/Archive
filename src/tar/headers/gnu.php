@@ -115,48 +115,5 @@ class ezcArchiveGnuHeader extends ezcArchiveUstarHeader
             }
         }
     }
-
-    /**
-     * Reads an extended set of data from the Block file and returns it as a string.
-     *
-     * Some filenames or link names do not fit in the Ustar header, and are therefor placed in a new block.
-     * This method read the block(s) and returns the data as a string. After this method returns, the
-     * block position of $file points to the header that follows the payload.
-     *
-     * @throws ezcArchiveValueException
-     *         if the payload is larger than {@link MAX_EXTENSION_SIZE}.
-     * @throws ezcArchiveBlockSizeException
-     *         if the archive ends before the payload or the next header.
-     * @param ezcArchiveBlockFile $file
-     * @return string
-     */
-    protected function readExtension( ezcArchiveBlockFile $file )
-    {
-        if ( $this->fileSize > self::MAX_EXTENSION_SIZE )
-        {
-            throw new ezcArchiveValueException( $this->fileSize, "an extension header size of at most " . self::MAX_EXTENSION_SIZE . " bytes" );
-        }
-
-        $blocks = $file->getBlocksFromBytes( $this->fileSize );
-
-        $data = "";
-        for ( $i = 0; $i < $blocks; $i++ )
-        {
-            $block = $file->next();
-            if ( $block === false )
-            {
-                throw new ezcArchiveBlockSizeException( $file->getFileName(), "The archive ends inside an extension header." );
-            }
-            $data .= $block;
-        }
-
-        // Move to the header the extension applies to.
-        if ( $file->next() === false )
-        {
-            throw new ezcArchiveBlockSizeException( $file->getFileName(), "The archive ends after an extension header." );
-        }
-
-        return substr( $data, 0, $this->fileSize );
-    }
 }
 ?>
